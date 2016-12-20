@@ -39,23 +39,56 @@ namespace WebResourceCatch
         {
             var response = await _default.RequestAsync(request, cancel).ConfigureAwait(false);
 
+            if (response == null)
+            {
+                return null;
+            }
+
             var bytes = await GetContentAsync(response).ConfigureAwait(false);
 
             Console.WriteLine(response.Address.Href);
 
-            await SetResource(bytes).ConfigureAwait(false);
+            await SetResource(bytes, response.Headers["Content-Type"]).ConfigureAwait(false);
 
             return await GetResponseAsync(bytes).ConfigureAwait(false);
 
         }
-        private async Task SetResource(byte[] content)
+        private async Task SetResource(byte[] content, string contentType)
         {
             var response = await GetResponseAsync(content);
+
+            if (response == null)
+            {
+                return;
+            }
+
             var fp = response.Address.Path;
+
+            string ext = ".html";
+            if (contentType.IndexOf("css") > -1)
+            {
+                ext = ".css";
+            }
+            else if (contentType.IndexOf("javascript") > -1)
+            {
+                ext = ".js";
+            }
+            else if (contentType.IndexOf("html") > -1)
+            {
+                ext = ".html";
+            }
+
             if (string.IsNullOrEmpty(fp) || string.IsNullOrWhiteSpace(Path.GetFileNameWithoutExtension(response.Address.Href)))
             {
-                fp += "index.html";
+                fp += "index" + ext;
             }
+            else if (!string.IsNullOrWhiteSpace(Path.GetFileNameWithoutExtension(response.Address.Href)) && string.IsNullOrWhiteSpace(Path.GetExtension(response.Address.Href)))
+            {
+                fp += Path.GetFileNameWithoutExtension(response.Address.Href) + ext;
+            }
+
+
+
             var rootPath = Path.Combine(_directoryWeb, response.Address.HostName);
 
             var fullName = Path.Combine(rootPath, fp.TrimStart('/').Replace('/', '\\'));
@@ -89,7 +122,7 @@ namespace WebResourceCatch
             foreach (var style in styles.Rules)
             {
                 var s = style as ICssStyleRule;
-                if (!string.IsNullOrWhiteSpace(s.Style.BackgroundImage) && s.Style.BackgroundImage.StartsWith("url"))
+                if (s != null && !string.IsNullOrWhiteSpace(s.Style.BackgroundImage) && s.Style.BackgroundImage.StartsWith("url"))
                 {
                     var reg = new Regex("\"([^\"]*)\"");
 
@@ -129,12 +162,16 @@ namespace WebResourceCatch
                     var response = await _default.RequestAsync(re, CancellationToken.None).ConfigureAwait(false);
 
                     var bytes = await GetContentAsync(response).ConfigureAwait(false);
-                    await SetResource(bytes).ConfigureAwait(false);
+                    await SetResource(bytes, response.Headers["Content-Type"]).ConfigureAwait(false);
                 }
             }
         }
         private async Task<IResponse> GetResponseAsync(Byte[] content)
         {
+            if (content == null)
+            {
+                return null;
+            }
             using (var ms = new MemoryStream(content))
             {
                 var code = ms.ReadInt();
@@ -155,20 +192,25 @@ namespace WebResourceCatch
         }
         private async Task<Byte[]> GetContentAsync(IResponse response)
         {
-            var code = (int)response.StatusCode;
-            var addr = response.Address.Href;
-            var hdrs = response.Headers;
-            var ctnt = response.Content;
-            using (var ms = new MemoryStream())
+            if (response != null)
             {
-                ms.Write(code);
-                ms.Write(addr);
-                ms.Write(hdrs);
-                await ctnt.CopyToAsync(ms).ConfigureAwait(false);
-                var res = ms.ToArray();
-                ms.Close();
-                return res;
+                var code = (int)response.StatusCode;
+                var addr = response.Address.Href;
+                var hdrs = response.Headers;
+                var ctnt = response.Content;
+                using (var ms = new MemoryStream())
+                {
+                    ms.Write(code);
+                    ms.Write(addr);
+                    ms.Write(hdrs);
+                    await ctnt.CopyToAsync(ms).ConfigureAwait(false);
+                    var res = ms.ToArray();
+                    ms.Close();
+                    return res;
+                }
             }
+            return null;
+            
         }
     }
 }
